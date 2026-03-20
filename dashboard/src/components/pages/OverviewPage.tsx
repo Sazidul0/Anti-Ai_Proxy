@@ -11,6 +11,7 @@ interface Stats {
   total_sessions: number;
   total_requests: number;
   blocked_requests: number;
+  filter?: { blocked_domains: number };
 }
 
 interface Alert {
