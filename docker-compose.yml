@@ -1,0 +1,150 @@
+version: "3.8"
+
+services:
+  # ── PostgreSQL (Proxy Backend) ──
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-antiproxy}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-antiproxy_secret_change_me}
+      POSTGRES_DB: ${DB_NAME:-antiproxy}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-antiproxy}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - antiproxy
+
+  # ── PostgreSQL (CTFd) ──
+  postgres-ctfd:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${CTFD_DB_USER:-ctfd}
+      POSTGRES_PASSWORD: ${CTFD_DB_PASSWORD:-ctfd_secret_change_me}
+      POSTGRES_DB: ${CTFD_DB_NAME:-ctfd}
+    volumes:
+      - postgres_ctfd_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CTFD_DB_USER:-ctfd}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - antiproxy
+
+  # ── Redis ──
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - antiproxy
+
+  # ── Go Proxy + API Server ──
+  proxy:
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PROXY_PORT:-8080}:8080"   # Proxy
+      - "${API_PORT:-8081}:8081"     # REST API
+    environment:
+      - PROXY_PORT=8080
+      - API_PORT=8081
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-antiproxy}
+      - DB_PASSWORD=${DB_PASSWORD:-antiproxy_secret_change_me}
+      - DB_NAME=${DB_NAME:-antiproxy}
+      - DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JWT_SECRET=${JWT_SECRET:-change-me-to-a-secure-random-string-at-least-32-chars}
+      - JWT_EXPIRY=${JWT_EXPIRY:-24h}
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+      - SESSION_TIMEOUT=${SESSION_TIMEOUT:-60}
+      - SUSPICION_THRESHOLD=${SUSPICION_THRESHOLD:-50}
+      - SCORE_AI_REQUEST=${SCORE_AI_REQUEST:-10}
+      - SCORE_PROXY_DISCONNECT=${SCORE_PROXY_DISCONNECT:-20}
+      - SCORE_MULTI_BLOCKED=${SCORE_MULTI_BLOCKED:-5}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - antiproxy
+
+  # ── CTFd ──
+  ctfd:
+    image: ctfd/ctfd:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgres://${CTFD_DB_USER:-ctfd}:${CTFD_DB_PASSWORD:-ctfd_secret_change_me}@postgres-ctfd:5432/${CTFD_DB_NAME:-ctfd}
+      - REDIS_URL=redis://redis:6379/1
+      - SECRET_KEY=${JWT_SECRET:-change-me}
+    volumes:
+      - ctfd_uploads:/var/uploads
+      - ctfd_logs:/var/log/CTFd
+      - ./ctfd-plugin/anti_ai_proxy:/opt/CTFd/CTFd/plugins/anti_ai_proxy
+    depends_on:
+      postgres-ctfd:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - antiproxy
+
+  # ── Next.js Admin Dashboard ──
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8081}
+      - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-ws://localhost:8081}
+    depends_on:
+      - proxy
+    networks:
+      - antiproxy
+
+volumes:
+  postgres_data:
+  postgres_ctfd_data:
+  redis_data:
+  ctfd_uploads:
+  ctfd_logs:
+
+networks:
+  antiproxy:
+    driver: bridge

@@ -1,0 +1,26 @@
+/* Anti-AI Proxy CTFd Plugin Styles */
+.proxy-status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.proxy-status-badge.connected {
+    background: #22c55e;
+    color: white;
+}
+
+.proxy-status-badge.disconnected {
+    background: #ef4444;
+    color: white;
+}
+
+.proxy-warning {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+}

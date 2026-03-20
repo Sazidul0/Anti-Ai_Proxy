@@ -1,0 +1,15 @@
+.env
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.log
+vendor/
+node_modules/
+.next/
+dist/
+tmp/
+.env.example
+SECURITY.md
