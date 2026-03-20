@@ -23,7 +23,7 @@ User Browser  →  Proxy Gateway  →  AI Filter Engine  →  Internet  →  CTF
 ### 1. Clone & Configure
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Sazidul0/Anti-Ai_Proxy.git
 cd Anti_AI_Proxy
 cp .env.example .env
 # Edit .env with your secrets
